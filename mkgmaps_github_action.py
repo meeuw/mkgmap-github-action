@@ -11,7 +11,10 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 GITHUB_ACTION = """name: Generate OpenStreetMap Garmin maps
-on: [push]
+on:
+  push:
+    branches:
+      - main
 jobs:
   mkgmap:
     runs-on: ubuntu-latest
@@ -94,7 +97,7 @@ jobs:
         run: mv bounds.zip {{ downloads["bounds"]["filename"] }}
       - uses: "marvinpinto/action-automatic-releases@v1.2.1"
         with:
-          repo_token: "${{ '{{ secrets.GITHUB_TOKEN }}' }}"
+          repo_token: "${{ '{{ secrets.PAT }}' }}"
           automatic_release_tag: "latest"
           prerelease: false
           files: gmapsupp.img
