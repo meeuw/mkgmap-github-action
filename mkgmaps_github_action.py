@@ -63,7 +63,7 @@ jobs:
           --max-nodes=1400000
           --mapid=10010001
           --geonames-file=cities15000.txt
-          --polygon-file=benelux.poly
+          --polygon-file=resources/benelux.poly
           merged.osm.pbf
       - name: Extract mkgmap
         run: unzip -d mkgmap {{ downloads["mkgmap"]["filename"] }}
@@ -88,9 +88,9 @@ jobs:
           -Xms1024m
           -Xmx1024m
           -jar mkgmap/*/mkgmap.jar
-          -c osm_bnl.args
+          -c "styles/Openfietsmap full/mkgmap.args"
           -c splitted/template.args
-          10010.txt
+          "typ/Openfietsmap lite/20011.txt"
       - name: Rename sea.zip
         run: mv sea.zip {{ downloads["sea"]["filename"] }}
       - name: Rename bounds.zip
