@@ -168,7 +168,7 @@ class Downloads:
         request_get = requests.get(f"{thkukuk}/", timeout=3)
 
         check = datetime.datetime.now()
-        for _ in range(20):
+        for _ in range(30):
             filename = f'bounds-{check.strftime("%Y%m%d")}.zip'
             if filename in request_get.text:
                 self.downloads["bounds"] = {
@@ -179,7 +179,7 @@ class Downloads:
             check -= datetime.timedelta(days=1)
 
         check = datetime.datetime.now()
-        for _ in range(20):
+        for _ in range(30):
             filename = f'sea-{check.strftime("%Y%m%d")}'
             matched = re.search(f"({filename}[0-9]*.zip)", request_get.text)
             if matched:
