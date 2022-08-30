@@ -179,7 +179,7 @@ class Downloads:
             check -= datetime.timedelta(days=1)
 
         check = datetime.datetime.now()
-        for _ in range(10):
+        for _ in range(20):
             filename = f'sea-{check.strftime("%Y%m%d")}'
             matched = re.search(f"({filename}[0-9]*.zip)", request_get.text)
             if matched:
