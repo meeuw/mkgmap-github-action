@@ -53,6 +53,10 @@ jobs:
         run: unzip -d splitter {{ downloads["splitter"]["filename"] }}
       - name: Extract cities
         run: unzip {{ downloads["cities15000"]["filename"] }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
       - name: Splitter
         run: >
           java
