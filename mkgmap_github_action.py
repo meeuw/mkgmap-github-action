@@ -38,7 +38,7 @@ jobs:
         run: unzip -d osmosis {{ downloads["osmosis"]["filename"] }}
       - name: Merge extracts
         run: >
-          osmosis/bin/osmosis
+          osmosis*/bin/osmosis
 {%- for country in regions["countries"] %}
           --rbf {{ downloads["geofabrik-" ~ country]["filename"] }}
 {%- endfor %}
