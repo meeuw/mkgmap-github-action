@@ -89,8 +89,8 @@ jobs:
       - name: mkgmap
         run: >
           java
-          -Xms1024m
-          -Xmx1024m
+          -Xms4096m
+          -Xmx4096m
           -jar mkgmap/*/mkgmap.jar
           -c "styles/Openfietsmap full/mkgmap.args"
           -c splitted/template.args
