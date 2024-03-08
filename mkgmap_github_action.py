@@ -9,6 +9,12 @@ import os.path
 import requests
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import http.client
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+http.client.HTTPConnection.debuglevel = 1
+
 
 GITHUB_ACTION = """name: Generate OpenStreetMap Garmin maps
 on:
@@ -123,7 +129,7 @@ class Downloads:
         self.mkgmap()
         self.splitter()
         for dem in regions["DEM"]:
-            self.nonversioned(f"http://www.viewfinderpanoramas.org/dem3/{dem}.zip")
+            self.nonversioned(f"https://www.viewfinderpanoramas.org/dem3/{dem}.zip")
         for hoehendaten in regions["hoehendaten"]:
             self.nonversioned(
                 "http://develop.freizeitkarte-osm.de/ele_20_100_500/"
