@@ -6,6 +6,7 @@ import datetime
 import json
 import re
 import os.path
+import textwrap
 import requests
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -14,6 +15,13 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 http.client.HTTPConnection.debuglevel = 1
+
+
+def format_run(value):
+    if isinstance(value, str):
+        return value
+    else:
+        return ">\n" + "\n".join(f'          {s}' for s in value)
 
 
 GITHUB_ACTION = """name: Generate OpenStreetMap Garmin maps
@@ -40,71 +48,14 @@ jobs:
         if: steps.cache-{{ name }}.outputs.cache-hit != 'true'
         run: wget -O {{ download.filename }} {{ download.url }}
 {%- endfor %}
-      - name: Extract osmosis
-        run: unzip -d osmosis {{ downloads["osmosis"]["filename"] }}
       - uses: actions/setup-java@v3
         with:
           distribution: 'oracle'
           java-version: '17'
-      - name: Merge extracts
-        run: >
-          osmosis/osmosis*/bin/osmosis
-{%- for country in regions["countries"] %}
-          --rbf {{ downloads["geofabrik-" ~ country]["filename"] }}
+{%- for name, command in commands %}
+      - name: {{ name }}
+        run: {{ command | format_run | safe }}
 {%- endfor %}
-{%- for hoehendaten in regions["hoehendaten"] %}
-          --rbf {{ downloads["Hoehendaten_Freizeitkarte_" ~ hoehendaten]["filename"] }}
-{%- endfor %}
-{%- for _ in range(regions["countries"]|length + regions["hoehendaten"]|length - 1) %}
-          --merge
-{%- endfor %}
-          --wb merged.osm.pbf
-      - name: Extract splitter
-        run: unzip -d splitter {{ downloads["splitter"]["filename"] }}
-      - name: Extract cities
-        run: unzip {{ downloads["cities15000"]["filename"] }}
-      - name: Splitter
-        run: >
-          java
-          -Xmx4096m
-          -jar splitter/*/splitter.jar
-          --output=pbf
-          --output-dir=splitted
-          --max-nodes=1400000
-          --mapid=10010001
-          --geonames-file=cities15000.txt
-          --polygon-file=resources/benelux.poly
-          merged.osm.pbf
-      - name: Extract mkgmap
-        run: unzip -d mkgmap {{ downloads["mkgmap"]["filename"] }}
-      - name: Extract dem files
-        run: >
-          for Z in
-{%- for dem in regions["DEM"] %}
-          {{ downloads[dem]["filename"] }}
-{%- endfor %}
-          ; do
-          unzip -d map_with_dem_files $Z ;
-          done
-      - name: Move DEM files
-        run: mv map_with_dem_files/???/*.hgt map_with_dem_files/
-      - name: Rename sea.zip
-        run: mv {{ downloads["sea"]["filename"] }} sea.zip
-      - name: Rename bounds.zip
-        run: mv {{ downloads["bounds"]["filename"] }} bounds.zip
-      - name: mkgmap
-        run: >
-          java
-          -Xms4096m
-          -Xmx4096m
-          -jar mkgmap/*/mkgmap.jar
-          -c "styles/Openfietsmap full/mkgmap.args"
-          -c splitted/template.args
-          "typ/Openfietsmap lite/20011.txt"
-      - name: Rename sea.zip
-        run: mv sea.zip {{ downloads["sea"]["filename"] }}
-      - name: Rename bounds.zip
-        run: mv bounds.zip {{ downloads["bounds"]["filename"] }}
       - uses: "marvinpinto/action-automatic-releases@v1.2.1"
         with:
           repo_token: "${{ '{{ secrets.PAT }}' }}"
@@ -143,7 +94,7 @@ class Downloads:
         """
         request_get = requests.get(
             "https://api.github.com/repos/openstreetmap/osmosis/releases/latest",
-            timeout=3
+            timeout=3,
         )
         download_json = request_get.json()
         name = download_json["name"]
@@ -206,27 +157,31 @@ class Downloads:
         """
         Find latest mkgmap
         """
-        request_get = requests.get(f"{self.mkgmaporguk}/download/mkgmap.html", timeout=3)
-        matched = re.search(r"/download/(mkgmap-r[0-9]+.zip)", request_get.text)
-        if matched:
-            filename = matched.group(1)
-            self.downloads["mkgmap"] = {
-                "url": f"{self.mkgmaporguk}/download/{filename}",
-                "filename": filename,
-            }
+        request_get = requests.get(
+            f"{self.mkgmaporguk}/download/mkgmap.html", timeout=3
+        )
+        matched = re.search(r'(mkgmap-r[0-9]+.zip)', request_get.text)
+        assert matched is not None
+        filename = matched.group(1)
+        self.downloads["mkgmap"] = {
+            "url": f"{self.mkgmaporguk}/download/{filename}",
+            "filename": filename,
+        }
 
     def splitter(self):
         """
         Find latest splitter
         """
-        request_get = requests.get(f"{self.mkgmaporguk}/download/splitter.html", timeout=3)
-        matched = re.search(r"/download/(splitter-r[0-9]+.zip)", request_get.text)
-        if matched:
-            filename = matched.group(1)
-            self.downloads["splitter"] = {
-                "url": f"{self.mkgmaporguk}/download/{filename}",
-                "filename": filename,
-            }
+        request_get = requests.get(
+            f"{self.mkgmaporguk}/download/splitter.html", timeout=3
+        )
+        matched = re.search(r'(splitter-r[0-9]+.zip)', request_get.text)
+        assert matched is not None
+        filename = matched.group(1)
+        self.downloads["splitter"] = {
+            "url": f"{self.mkgmaporguk}/download/{filename}",
+            "filename": filename,
+        }
 
     def nonversioned(self, url):
         """
@@ -239,6 +194,72 @@ class Downloads:
         }
 
 
+class Commands:
+    def __init__(self, regions, downloads):
+        self.regions = regions
+        self.downloads = downloads
+        self.commands = (
+            ("Extract osmosis", f'unzip -d osmosis {self.downloads["osmosis"]["filename"]}'),
+            ("Merge extracts", self.osmosis()),
+            ("Extract splitter", f'unzip -d splitter {self.downloads["splitter"]["filename"]}'),
+            ("Extract cities", f'unzip {self.downloads["cities15000"]["filename"]}'),
+            ("Splitter", (
+                "java",
+                "-Xmx4096m",
+                "-jar splitter/*/splitter.jar",
+                "--output=pbf",
+                "--output-dir=splitted",
+                "--max-nodes=1400000",
+                "--mapid=10010001",
+                "--geonames-file=cities15000.txt",
+                "--polygon-file=resources/benelux.poly",
+                "merged.osm.pbf",
+            )),
+            ("Extract mkgmap", f'unzip -d mkgmap {self.downloads["mkgmap"]["filename"]}'),
+            ("Extract dem files", self.extract_dem_files()),
+            ("Move DEM files", f"mv map_with_dem_files/???/*.hgt map_with_dem_files/"),
+            ("Rename sea.zip", f'mv {self.downloads["sea"]["filename"]} sea.zip'),
+            ("Rename bounds.zip", f'mv {self.downloads["bounds"]["filename"]} bounds.zip'),
+            ("mkgmap", (
+                "java",
+                "-Xms4096m",
+                "-Xmx4096m",
+                "-jar mkgmap/*/mkgmap.jar",
+                "-c \"styles/Openfietsmap full/mkgmap.args\"",
+                "-c splitted/template.args",
+                "\"typ/Openfietsmap lite/20011.txt\"",
+            )),
+            ("Rename sea.zip", f'mv sea.zip {self.downloads["sea"]["filename"]}'),
+            ("Rename bounds.zip", f'mv bounds.zip {self.downloads["bounds"]["filename"]}'),
+        )
+
+    def osmosis(self):
+        result = []
+        result.append("osmosis/osmosis*/bin/osmosis")
+        for country in self.regions["countries"]:
+            result.append(f'--rbf {self.downloads["geofabrik-" + country]["filename"]}')
+        for hoehendaten in self.regions["hoehendaten"]:
+            result.append(
+                f'--rbf {self.downloads["Hoehendaten_Freizeitkarte_" + hoehendaten]["filename"]}'
+            )
+        for _ in range(
+            len(self.regions["countries"]) + len(self.regions["hoehendaten"]) - 1
+        ):
+            result.append(f"--merge")
+        result.append("--wb merged.osm.pbf")
+        return result
+
+    def extract_dem_files(self):
+        result = []
+        result.append("for Z in")
+        for dem in self.regions["DEM"]:
+            result.append(self.downloads[dem]["filename"])
+        result.append("; do")
+        result.append("unzip -d map_with_dem_files $Z ;")
+        result.append("done")
+        return result
+
+
 def main():
     """
     Main function
@@ -248,12 +269,14 @@ def main():
         autoescape=select_autoescape(),
         keep_trailing_newline=True,
     )
+    env.filters["format_run"] = format_run
 
     with open("regions.json", encoding="utf8") as regions_file:
         regions = json.load(regions_file)
 
     downloads = Downloads(regions)
+    commands = Commands(regions, downloads.downloads)
 
     template = env.from_string(GITHUB_ACTION)
     with open(".github/workflows/mkgmap.yml", "w", encoding="utf8") as workflow:
-        workflow.write(template.render(downloads=downloads.downloads, regions=regions))
+        workflow.write(template.render(downloads=downloads.downloads, commands=commands.commands))
