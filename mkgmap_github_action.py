@@ -175,9 +175,9 @@ class Downloads:
         request_get = requests.get(
             f"{self.mkgmaporguk}/download/splitter.html", timeout=3
         )
-        matched = re.search(r'(splitter-r[0-9]+.zip)', request_get.text)
+        matched = re.search(r'(splitter-r[0-9]+)', request_get.text)
         assert matched is not None
-        filename = matched.group(1)
+        filename = f"{matched.group(1)}.zip"
         self.downloads["splitter"] = {
             "url": f"{self.mkgmaporguk}/download/{filename}",
             "filename": filename,
