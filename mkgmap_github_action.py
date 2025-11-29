@@ -129,7 +129,7 @@ class Downloads:
         request_get = requests.get(f"{thkukuk}/", timeout=3)
 
         check = datetime.datetime.now()
-        for _ in range(90):
+        for _ in range(120):
             filename = f'bounds-{check.strftime("%Y%m%d")}.zip'
             if filename in request_get.text:
                 self.downloads["bounds"] = {

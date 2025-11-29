@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "mkgmap-github-action"
-version = "0.18.0"
+version = "0.19.0"
 description = ""
 authors = ["Dick Marinus <dick@mrns.nl>"]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.14"
+python = ">=3.9,<3.15"
 Jinja2 = "^3.1.2"
 requests = "^2.28.1"
 
