@@ -36,17 +36,11 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
 {% for name, download in downloads.items() %}
-      - name: Cache {{ name }}
-        id: cache-{{ name }}
-        uses: actions/cache@v3
+      - id: {{ name }}
+        uses: ./.github/actions/cached-download
         with:
-          path: {{ download["filename"] }}
-          key: {{ download["filename"] }}
-{%- endfor %}
-{% for name, download in downloads.items() %}
-      - name: Download {{ name }}
-        if: steps.cache-{{ name }}.outputs.cache-hit != 'true'
-        run: wget -O {{ download.filename }} {{ download.url }}
+          filename: {{ download.filename }}
+          url: {{ download.url }}
 {%- endfor %}
       - uses: actions/setup-java@v3
         with:
@@ -199,10 +193,10 @@ class Commands:
         self.regions = regions
         self.downloads = downloads
         self.commands = (
-            ("Extract osmosis", f'unzip -d osmosis {self.downloads["osmosis"]["filename"]}'),
+            ("Extract osmosis", 'unzip -d osmosis ${{ steps.osmosis.outputs.filename }}'),
             ("Merge extracts", self.osmosis()),
-            ("Extract splitter", f'unzip -d splitter {self.downloads["splitter"]["filename"]}'),
-            ("Extract cities", f'unzip {self.downloads["cities15000"]["filename"]}'),
+            ("Extract splitter", 'unzip -d splitter ${{ steps.splitter.outputs.filename }}'),
+            ("Extract cities", 'unzip ${{ steps.cities15000.outputs.filename }}'),
             ("Splitter", (
                 "java",
                 "-Xmx4096m",
@@ -215,11 +209,11 @@ class Commands:
                 "--polygon-file=resources/benelux.poly",
                 "merged.osm.pbf",
             )),
-            ("Extract mkgmap", f'unzip -d mkgmap {self.downloads["mkgmap"]["filename"]}'),
+            ("Extract mkgmap", 'unzip -d mkgmap ${{ steps.mkgmap.outputs.filename }}'),
             ("Extract dem files", self.extract_dem_files()),
-            ("Move DEM files", f"mv map_with_dem_files/???/*.hgt map_with_dem_files/"),
-            ("Rename sea.zip", f'mv {self.downloads["sea"]["filename"]} sea.zip'),
-            ("Rename bounds.zip", f'mv {self.downloads["bounds"]["filename"]} bounds.zip'),
+            ("Move DEM files", "mv map_with_dem_files/???/*.hgt map_with_dem_files/"),
+            ("Rename sea.zip", 'mv ${{ steps.sea.outputs.filename }} sea.zip'),
+            ("Rename bounds.zip", 'mv ${{ steps.bounds.outputs.filename }} bounds.zip'),
             ("mkgmap", (
                 "java",
                 "-Xms4096m",
@@ -229,18 +223,18 @@ class Commands:
                 "-c splitted/template.args",
                 "\"typ/Openfietsmap lite/20011.txt\"",
             )),
-            ("Rename sea.zip", f'mv sea.zip {self.downloads["sea"]["filename"]}'),
-            ("Rename bounds.zip", f'mv bounds.zip {self.downloads["bounds"]["filename"]}'),
+            ("Rename sea.zip", 'mv sea.zip ${{ steps.sea.outputs.filename }}'),
+            ("Rename bounds.zip", 'mv bounds.zip ${{ steps.bounds.outputs.filename }}'),
         )
 
     def osmosis(self):
         result = []
         result.append("osmosis/osmosis*/bin/osmosis")
         for country in self.regions["countries"]:
-            result.append(f'--rbf {self.downloads["geofabrik-" + country]["filename"]}')
+            result.append(f'--rbf ${{{{ steps.geofabrik-{country}.outputs.filename }}}}')
         for hoehendaten in self.regions["hoehendaten"]:
             result.append(
-                f'--rbf {self.downloads["Hoehendaten_Freizeitkarte_" + hoehendaten]["filename"]}'
+                f'--rbf ${{{{ steps.Hoehendaten_Freizeitkarte_{hoehendaten}.outputs.filename }}}}'
             )
         for _ in range(
             len(self.regions["countries"]) + len(self.regions["hoehendaten"]) - 1
@@ -253,7 +247,7 @@ class Commands:
         result = []
         result.append("for Z in")
         for dem in self.regions["DEM"]:
-            result.append(self.downloads[dem]["filename"])
+            result.append(f"${{{{ steps.{dem}.outputs.filename }}}}")
         result.append("; do")
         result.append("unzip -d map_with_dem_files $Z ;")
         result.append("done")
