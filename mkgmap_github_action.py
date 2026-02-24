@@ -17,13 +17,6 @@ logging.basicConfig(level=logging.DEBUG)
 http.client.HTTPConnection.debuglevel = 1
 
 
-def format_run(value):
-    if isinstance(value, str):
-        return value
-    else:
-        return ">\n" + "\n".join(f'          {s}' for s in value)
-
-
 GITHUB_ACTION = """name: Generate OpenStreetMap Garmin maps
 on:
   push:
@@ -46,10 +39,63 @@ jobs:
         with:
           distribution: 'oracle'
           java-version: '17'
-{%- for name, command in commands %}
-      - name: {{ name }}
-        run: {{ command | format_run | safe }}
+      - name: Extract osmosis
+        run: unzip -d osmosis ${{ '{{' }} steps.osmosis.outputs.filename }}
+      - name: Merge extracts
+        run: >
+          scripts/osmosis.sh
+{%- for country in regions["countries"] %}
+          ${{ '{{' }} steps.geofabrik-{{ country }}.outputs.filename }}
 {%- endfor %}
+{%- for hoehendaten in regions["hoehendaten"] %}
+          ${{ '{{' }} steps.Hoehendaten_Freizeitkarte_{{ hoehendaten }}.outputs.filename }}
+{%- endfor %}
+      - name: Extract splitter
+        run: unzip -d splitter ${{ '{{' }} steps.splitter.outputs.filename }}
+      - name: Extract cities
+        run: unzip ${{ '{{' }} steps.cities15000.outputs.filename }}
+      - name: Splitter
+        run: >
+          java
+          -Xmx4096m
+          -jar splitter/*/splitter.jar
+          --output=pbf
+          --output-dir=splitted
+          --max-nodes=1400000
+          --mapid=10010001
+          --geonames-file=cities15000.txt
+          --polygon-file=resources/benelux.poly
+          merged.osm.pbf
+      - name: Extract mkgmap
+        run: unzip -d mkgmap ${{ '{{' }} steps.mkgmap.outputs.filename }}
+      - name: Extract dem files
+        run: >
+          for Z in
+{%- for dem in regions["DEM"] %}
+          ${{ '{{' }} steps.{{ dem }}.outputs.filename }}
+{%- endfor %}
+          ; do
+          unzip -d map_with_dem_files $Z ;
+          done
+      - name: Move DEM files
+        run: mv map_with_dem_files/???/*.hgt map_with_dem_files/
+      - name: Rename sea.zip
+        run: mv ${{ '{{' }} steps.sea.outputs.filename }} sea.zip
+      - name: Rename bounds.zip
+        run: mv ${{ '{{' }} steps.bounds.outputs.filename }} bounds.zip
+      - name: mkgmap
+        run: >
+          java
+          -Xms4096m
+          -Xmx4096m
+          -jar mkgmap/*/mkgmap.jar
+          -c "styles/Openfietsmap full/mkgmap.args"
+          -c splitted/template.args
+          "typ/Openfietsmap lite/20011.txt"
+      - name: Rename sea.zip
+        run: mv sea.zip ${{ '{{' }} steps.sea.outputs.filename }}
+      - name: Rename bounds.zip
+        run: mv bounds.zip ${{ '{{' }} steps.bounds.outputs.filename }}
       - uses: "marvinpinto/action-automatic-releases@v1.2.1"
         with:
           repo_token: "${{ '{{ secrets.PAT }}' }}"
@@ -188,72 +234,6 @@ class Downloads:
         }
 
 
-class Commands:
-    def __init__(self, regions, downloads):
-        self.regions = regions
-        self.downloads = downloads
-        self.commands = (
-            ("Extract osmosis", 'unzip -d osmosis ${{ steps.osmosis.outputs.filename }}'),
-            ("Merge extracts", self.osmosis()),
-            ("Extract splitter", 'unzip -d splitter ${{ steps.splitter.outputs.filename }}'),
-            ("Extract cities", 'unzip ${{ steps.cities15000.outputs.filename }}'),
-            ("Splitter", (
-                "java",
-                "-Xmx4096m",
-                "-jar splitter/*/splitter.jar",
-                "--output=pbf",
-                "--output-dir=splitted",
-                "--max-nodes=1400000",
-                "--mapid=10010001",
-                "--geonames-file=cities15000.txt",
-                "--polygon-file=resources/benelux.poly",
-                "merged.osm.pbf",
-            )),
-            ("Extract mkgmap", 'unzip -d mkgmap ${{ steps.mkgmap.outputs.filename }}'),
-            ("Extract dem files", self.extract_dem_files()),
-            ("Move DEM files", "mv map_with_dem_files/???/*.hgt map_with_dem_files/"),
-            ("Rename sea.zip", 'mv ${{ steps.sea.outputs.filename }} sea.zip'),
-            ("Rename bounds.zip", 'mv ${{ steps.bounds.outputs.filename }} bounds.zip'),
-            ("mkgmap", (
-                "java",
-                "-Xms4096m",
-                "-Xmx4096m",
-                "-jar mkgmap/*/mkgmap.jar",
-                "-c \"styles/Openfietsmap full/mkgmap.args\"",
-                "-c splitted/template.args",
-                "\"typ/Openfietsmap lite/20011.txt\"",
-            )),
-            ("Rename sea.zip", 'mv sea.zip ${{ steps.sea.outputs.filename }}'),
-            ("Rename bounds.zip", 'mv bounds.zip ${{ steps.bounds.outputs.filename }}'),
-        )
-
-    def osmosis(self):
-        result = []
-        result.append("osmosis/osmosis*/bin/osmosis")
-        for country in self.regions["countries"]:
-            result.append(f'--rbf ${{{{ steps.geofabrik-{country}.outputs.filename }}}}')
-        for hoehendaten in self.regions["hoehendaten"]:
-            result.append(
-                f'--rbf ${{{{ steps.Hoehendaten_Freizeitkarte_{hoehendaten}.outputs.filename }}}}'
-            )
-        for _ in range(
-            len(self.regions["countries"]) + len(self.regions["hoehendaten"]) - 1
-        ):
-            result.append(f"--merge")
-        result.append("--wb merged.osm.pbf")
-        return result
-
-    def extract_dem_files(self):
-        result = []
-        result.append("for Z in")
-        for dem in self.regions["DEM"]:
-            result.append(f"${{{{ steps.{dem}.outputs.filename }}}}")
-        result.append("; do")
-        result.append("unzip -d map_with_dem_files $Z ;")
-        result.append("done")
-        return result
-
-
 def main():
     """
     Main function
@@ -263,14 +243,12 @@ def main():
         autoescape=select_autoescape(),
         keep_trailing_newline=True,
     )
-    env.filters["format_run"] = format_run
 
     with open("regions.json", encoding="utf8") as regions_file:
         regions = json.load(regions_file)
 
     downloads = Downloads(regions)
-    commands = Commands(regions, downloads.downloads)
 
     template = env.from_string(GITHUB_ACTION)
     with open(".github/workflows/mkgmap.yml", "w", encoding="utf8") as workflow:
-        workflow.write(template.render(downloads=downloads.downloads, commands=commands.commands))
+        workflow.write(template.render(downloads=downloads.downloads, regions=regions))
