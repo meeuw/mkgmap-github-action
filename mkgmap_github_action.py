@@ -16,6 +16,74 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 http.client.HTTPConnection.debuglevel = 1
 
+SHELL_SCRIPT = """#!/bin/bash
+set -xe
+mkdir -p names
+{% for name, download in downloads.items() %}
+[ -f "$CACHE/{{download.filename}}" ] || wcurl -o $CACHE/{{ download.filename }} {{ download.url }}
+echo {{ download.filename }} > names/{{ name }}
+{%- endfor %}
+MERGED=$(cat \\
+  $CACHE/$(< names/osmosis) \\
+{%- for country in regions["countries"] %}
+  $CACHE/$(< names/geofabrik-{{ country }}) \\
+{%- endfor %}
+{%- for hoehendaten in regions["hoehendaten"] %}
+  $CACHE/$(< names/Hoehendaten_Freizeitkarte_{{ hoehendaten }}) \\
+{%- endfor %}
+  |md5sum|cut -c-32
+).osm.pbf
+unzip -d osmosis $CACHE/$(< names/osmosis)
+[ -f "$CACHE/$MERGED" ] || scripts/osmosis.sh \\
+  $CACHE/$MERGED \\
+{%- for country in regions["countries"] %}
+  $CACHE/$(< names/geofabrik-{{ country }}) \\
+{%- endfor %}
+{%- for hoehendaten in regions["hoehendaten"] %}
+  $CACHE/$(< names/Hoehendaten_Freizeitkarte_{{ hoehendaten }}) \\
+{%- endfor %}
+;
+unzip -d splitter $CACHE/$(< names/splitter)
+unzip $CACHE/$(< names/cities15000)
+SPLITTED_DIR=$(cat \\
+  $CACHE/$(< names/splitter) \\
+  $CACHE/$(< names/cities15000) \\
+  resources/benelux.poly \\
+  $CACHE/$MERGED \\
+  |md5sum|cut -c-32
+)
+[ -d "$CACHE/$SPLITTED_DIR" ] || java \\
+  -Xmx4096m \\
+  -jar splitter/*/splitter.jar \\
+  --output=pbf \\
+  --output-dir=$CACHE/$SPLITTED_DIR \\
+  --max-nodes=1400000 \\
+  --mapid=10010001 \\
+  --geonames-file=cities15000.txt \\
+  --polygon-file=resources/benelux.poly \\
+  $CACHE/$MERGED
+cp -r $CACHE/$SPLITTED_DIR splitted
+ls splitted
+unzip -d mkgmap $CACHE/$(< names/mkgmap)
+for Z in \\
+{%- for dem in regions["DEM"] %}
+   $(< names/{{ dem }}) \\
+{%- endfor %}
+; do
+  unzip -d map_with_dem_files $CACHE/$Z
+done
+mv map_with_dem_files/???/*.hgt map_with_dem_files/
+cp $CACHE/$(< names/sea) sea.zip
+cp $CACHE/$(< names/bounds) bounds.zip
+java \
+  -Xms4096m \
+  -Xmx4096m \
+  -jar mkgmap/*/mkgmap.jar \
+  -c "styles/Openfietsmap full/mkgmap.args" \
+  -c splitted/template.args \
+  "typ/Openfietsmap lite/20011.txt"
+"""
+
 
 GITHUB_ACTION = """name: Generate OpenStreetMap Garmin maps
 on:
@@ -41,9 +109,29 @@ jobs:
           java-version: '17'
       - name: Extract osmosis
         run: unzip -d osmosis ${{ '{{' }} steps.osmosis.outputs.filename }}
+      - name: merge
+        id: merged
+        run: >
+          echo filename=$(cat
+          $CACHE/$(< names/osmosis)
+          {%- for country in regions["countries"] %}
+          $CACHE/$(< names/geofabrik-{{ country }})
+          {%- endfor %}
+          {%- for hoehendaten in regions["hoehendaten"] %}
+          $CACHE/$(< names/Hoehendaten_Freizeitkarte_{{ hoehendaten }})
+          {%- endfor %}
+          |md5sum|cut -c-32
+          ).osm.pbf >> $GITHUB_OUTPUT
+      - id: cache-merge
+        uses: actions/cache@v5
+        with:
+          path: ${{ '{{' }} steps.merged.outputs.filename }}
+          key: ${{ '{{' }} steps.merged.outputs.filename }}
       - name: Merge extracts
+        if: steps.cache.outputs.cache-hit != 'true'
         run: >
           scripts/osmosis.sh
+          ${{ '{{' }} steps.merged.outputs.filename }}
 {%- for country in regions["countries"] %}
           ${{ '{{' }} steps.geofabrik-{{ country }}.outputs.filename }}
 {%- endfor %}
@@ -65,7 +153,7 @@ jobs:
           --mapid=10010001
           --geonames-file=cities15000.txt
           --polygon-file=resources/benelux.poly
-          merged.osm.pbf
+          ${{ '{{' }} steps.merged.outputs.filename }}
       - name: Extract mkgmap
         run: unzip -d mkgmap ${{ '{{' }} steps.mkgmap.outputs.filename }}
       - name: Extract dem files
@@ -248,7 +336,14 @@ def main():
         regions = json.load(regions_file)
 
     downloads = Downloads(regions)
+    print(downloads.downloads)
+    with open('downloads.json', 'w') as d:
+        json.dump(downloads.downloads, d)
 
     template = env.from_string(GITHUB_ACTION)
     with open(".github/workflows/mkgmap.yml", "w", encoding="utf8") as workflow:
+        workflow.write(template.render(downloads=downloads.downloads, regions=regions))
+
+    template = env.from_string(SHELL_SCRIPT)
+    with open("run.sh", "w", encoding="utf8") as workflow:
         workflow.write(template.render(downloads=downloads.downloads, regions=regions))
