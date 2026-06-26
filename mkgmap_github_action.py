@@ -241,7 +241,7 @@ class Downloads:
         for _ in range(10):
             filename = f'{country}-{check.strftime("%y%m%d")}.osm.pbf'
             url = f"https://download.geofabrik.de/europe/{filename}"
-            request_head = requests.head(url)
+            request_head = requests.head(url, timeout=3, stream=True)
             if request_head.ok:
                 self.downloads[f"geofabrik-{country}"] = {
                     "url": url,
