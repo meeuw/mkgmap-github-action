@@ -76,12 +76,12 @@ done
 mv map_with_dem_files/???/*.hgt map_with_dem_files/
 cp $CACHE/$(< names/sea) sea.zip
 cp $CACHE/$(< names/bounds) bounds.zip
-java \
-  -Xms4096m \
-  -Xmx4096m \
-  -jar mkgmap/*/mkgmap.jar \
-  -c "styles/Openfietsmap full/mkgmap.args" \
-  -c splitted/template.args \
+java \\
+  -Xms4096m \\
+  -Xmx4096m \\
+  -jar mkgmap/*/mkgmap.jar \\
+  -c "styles/Openfietsmap full/mkgmap.args" \\
+  -c splitted/template.args \\
   "typ/Openfietsmap lite/20011.txt"
 """
 
