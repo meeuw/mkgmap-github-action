@@ -269,7 +269,7 @@ class Downloads:
             check -= datetime.timedelta(days=1)
 
         check = datetime.datetime.now()
-        for _ in range(30):
+        for _ in range(200):
             filename = f'sea-{check.strftime("%Y%m%d")}'
             matched = re.search(f"({filename}[0-9]*.zip)", request_get.text)
             if matched:
@@ -287,7 +287,7 @@ class Downloads:
         Find latest mkgmap
         """
         request_get = requests.get(
-            f"{self.mkgmaporguk}/download/mkgmap.html", timeout=3
+            f"{self.mkgmaporguk}/download/mkgmap.html", timeout=10
         )
         matched = re.search(r'(mkgmap-r[0-9]+.zip)', request_get.text)
         assert matched is not None
@@ -302,7 +302,7 @@ class Downloads:
         Find latest splitter
         """
         request_get = requests.get(
-            f"{self.mkgmaporguk}/download/splitter.html", timeout=3
+            f"{self.mkgmaporguk}/download/splitter.html", timeout=10
         )
         matched = re.search(r'(splitter-r[0-9]+)', request_get.text)
         assert matched is not None

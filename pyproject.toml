@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mkgmap-github-action"
-version = "0.24.0"
+version = "0.25.0"
 description = ""
 authors = ["Dick Marinus <dick@mrns.nl>"]
 
